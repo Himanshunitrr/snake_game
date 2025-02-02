@@ -261,78 +261,69 @@ function drawEyes(snake) {
 	ctx.restore();
 }
 
-// Draws a half white circle (mouth) on the head of the user-controlled snake.
+// Draws a half white circle (mouth) on the head of the user-controlled snake,
+// centered in the head block, with its flat (diameter) edge facing inward.
+// In this updated version the default drawing (for snake moving right)
+// is flipped compared to before.
+// Draws a half white circle (mouth) on the head of the user-controlled snake,
+// with its flat (diameter) edge facing inward (toward the snake’s body).
+// The mouth is positioned so that it is significantly separated from the eyes.
 function drawMouth(snake) {
-	const head = snake.body[0];
-	const headX = head.x * cellSize;
-	const headY = head.y * cellSize;
-	let mouthCenter,
-		mouthRadius = cellSize * 0.3;
-
-	ctx.save();
-	ctx.fillStyle = "white";
-
-	if (snake.direction.x === 1) {
-		// Moving right: mouth on left side.
-		mouthCenter = { x: headX + cellSize * 0.3, y: headY + cellSize * 0.5 };
-		ctx.beginPath();
-		ctx.arc(
-			mouthCenter.x,
-			mouthCenter.y,
-			mouthRadius,
-			Math.PI / 2,
-			(3 * Math.PI) / 2,
-			true
-		);
-		ctx.fill();
-	} else if (snake.direction.x === -1) {
-		// Moving left: mouth on right side.
-		mouthCenter = { x: headX + cellSize * 0.7, y: headY + cellSize * 0.5 };
-		ctx.beginPath();
-		ctx.arc(
-			mouthCenter.x,
-			mouthCenter.y,
-			mouthRadius,
-			-Math.PI / 2,
-			Math.PI / 2,
-			true
-		);
-		ctx.fill();
-	} else if (snake.direction.y === 1) {
-		// Moving down: mouth on top.
-		mouthCenter = { x: headX + cellSize * 0.5, y: headY + cellSize * 0.3 };
-		ctx.beginPath();
-		ctx.arc(mouthCenter.x, mouthCenter.y, mouthRadius, 0, Math.PI, true);
-		ctx.fill();
-	} else if (snake.direction.y === -1) {
-		// Moving up: mouth on bottom.
-		mouthCenter = { x: headX + cellSize * 0.5, y: headY + cellSize * 0.7 };
-		ctx.beginPath();
-		ctx.arc(
-			mouthCenter.x,
-			mouthCenter.y,
-			mouthRadius,
-			Math.PI,
-			2 * Math.PI,
-			true
-		);
-		ctx.fill();
-	} else {
-		// Default: assume moving right.
-		mouthCenter = { x: headX + cellSize * 0.3, y: headY + cellSize * 0.5 };
-		ctx.beginPath();
-		ctx.arc(
-			mouthCenter.x,
-			mouthCenter.y,
-			mouthRadius,
-			Math.PI / 2,
-			(3 * Math.PI) / 2,
-			true
-		);
-		ctx.fill();
-	}
-	ctx.restore();
+  const head = snake.body[0];
+  const headX = head.x * cellSize;
+  const headY = head.y * cellSize;
+  
+  // We'll compute a custom mouth center based on the snake's direction.
+  let mouthCenter = { x: 0, y: 0 };
+  let rotation = 0;
+  
+  // For a block of size 'cellSize', assume:
+  // - 30% along the dimension is the "near" side (closer to the block edge),
+  // - 70% is the "far" side (closer to where the eyes are drawn).
+  if (snake.direction.x === 1) { // Moving right
+    // Eyes are at ~70% of width; place mouth at ~30%
+    mouthCenter = { x: headX + cellSize * 0.3, y: headY + cellSize / 2 };
+    rotation = 0;
+  } else if (snake.direction.x === -1) { // Moving left
+    // Eyes are at ~30% of width; place mouth at ~70%
+    mouthCenter = { x: headX + cellSize * 0.7, y: headY + cellSize / 2 };
+    rotation = Math.PI;
+  } else if (snake.direction.y === 1) { // Moving down
+    // Eyes are at ~70% of height; place mouth at ~30%
+    mouthCenter = { x: headX + cellSize / 2, y: headY + cellSize * 0.3 };
+    rotation = Math.PI / 2;
+  } else if (snake.direction.y === -1) { // Moving up
+    // Eyes are at ~30% of height; place mouth at ~70%
+    mouthCenter = { x: headX + cellSize / 2, y: headY + cellSize * 0.7 };
+    rotation = -Math.PI / 2;
+  } else {
+    // Default to moving right.
+    mouthCenter = { x: headX + cellSize * 0.3, y: headY + cellSize / 2 };
+    rotation = 0;
+  }
+  
+  // Use the canvas transform to draw a half circle in our default orientation,
+  // then rotate it so that its flat edge faces inward.
+  // In our default drawing (for snake moving right), we draw a half circle
+  // with its chord (flat edge) on the right.
+  // (That is achieved by drawing an arc from 3π/2 to π/2 in anticlockwise mode.)
+  ctx.save();
+  // Translate to the computed mouth center.
+  ctx.translate(mouthCenter.x, mouthCenter.y);
+  // Rotate by the computed angle.
+  ctx.rotate(rotation);
+  
+  ctx.fillStyle = "white";
+  ctx.beginPath();
+  // Draw the half circle:
+  // In default (rightward) orientation, the arc from 3π/2 to π/2 (anticlockwise)
+  // yields a half circle with the chord on the right.
+  ctx.arc(0, 0, cellSize * 0.3, 3 * Math.PI / 2, Math.PI / 2, true);
+  ctx.fill();
+  
+  ctx.restore();
 }
+
 
 /*******************************************************
  * THE GAME LOOP: UPDATING THE GAME STATE
@@ -471,7 +462,7 @@ function draw() {
 			// For the head, add facial features.
 			if (i === 0) {
 				if (snake.userControlled) {
-					drawMouth(snake); // Draw the half circle (mouth) behind the eyes.
+          drawMouth(snake); // Draw the half circle (mouth) behind the eyes.
 				}
 				drawEyes(snake);
 			}
