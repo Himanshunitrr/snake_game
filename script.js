@@ -470,6 +470,77 @@ function draw() {
 	}
 }
 
+// Variables to store the starting touch coordinates.
+let touchStartX = null;
+let touchStartY = null;
+
+// Minimum distance (in pixels) to consider a swipe.
+const swipeThreshold = 50;
+
+// Listen for touchstart events on the whole document.
+document.addEventListener('touchstart', function(e) {
+  // Use the first touch point.
+  const touch = e.changedTouches[0];
+  touchStartX = touch.clientX;
+  touchStartY = touch.clientY;
+}, false);
+
+// Listen for touchend events on the whole document.
+document.addEventListener('touchend', function(e) {
+  if (touchStartX === null || touchStartY === null) {
+    return;
+  }
+  const touch = e.changedTouches[0];
+  const touchEndX = touch.clientX;
+  const touchEndY = touch.clientY;
+  
+  const diffX = touchEndX - touchStartX;
+  const diffY = touchEndY - touchStartY;
+  
+  // Determine if the swipe is more horizontal or vertical.
+  if (Math.abs(diffX) > Math.abs(diffY)) {
+    // Horizontal swipe.
+    if (Math.abs(diffX) > swipeThreshold) {
+      if (diffX > 0) {
+        // Swipe right.
+        updateUserSnakeDirection({ x: 1, y: 0 });
+      } else {
+        // Swipe left.
+        updateUserSnakeDirection({ x: -1, y: 0 });
+      }
+    }
+  } else {
+    // Vertical swipe.
+    if (Math.abs(diffY) > swipeThreshold) {
+      if (diffY > 0) {
+        // Swipe down.
+        updateUserSnakeDirection({ x: 0, y: 1 });
+      } else {
+        // Swipe up.
+        updateUserSnakeDirection({ x: 0, y: -1 });
+      }
+    }
+  }
+  // Reset starting coordinates.
+  touchStartX = null;
+  touchStartY = null;
+}, false);
+
+// Helper function to update the user-controlled snake's direction.
+// This function mimics the behavior of your keyboard event listener.
+function updateUserSnakeDirection(newDir) {
+  const userSnake = snakes.find(s => s.userControlled);
+  if (!userSnake) return;
+  
+  // Prevent a 180° reversal if the snake has more than one block.
+  if (userSnake.body.length > 1) {
+    if (userSnake.direction.x === -newDir.x && userSnake.direction.y === -newDir.y) {
+      return;
+    }
+  }
+  userSnake.direction = newDir;
+}
+
 /*******************************************************
  * KEYBOARD EVENT LISTENER FOR USER CONTROL
  *******************************************************/
