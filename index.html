@@ -23,5 +23,14 @@
   
   <!-- Link to the JavaScript file -->
   <script src="script.js"></script>
+  <script>
+    document.getElementById('snakeCount').addEventListener('input', function() {
+      const snakeCount = document.getElementById('snakeCount');
+      if (snakeCount.value > 250) {
+        alert('Up to 250 snakes are allowed.');
+        snakeCount.value = 250;
+      }
+    });
+  </script>
 </body>
 </html>
