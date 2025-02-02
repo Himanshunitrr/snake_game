@@ -15,6 +15,14 @@ let food = { x: 0, y: 0, color: "yellow" }; // Food object with its color.
 let gameInterval; // To hold the setInterval reference.
 let foodColor = "yellow"; // Will be determined to avoid conflict with snake colors.
 
+// Global variable to remember the designated user-controlled snake's id.
+window.userSnakeId = undefined;
+
+// Global counter for consecutive iterations that the user snake is blocked.
+let userBlockedCounter = 0;
+// Number of consecutive iterations that the user snake must be blocked before ending the game.
+const USER_BLOCKED_THRESHOLD = 3;
+
 /*******************************************************
  * SNAKE CLASS DEFINITION
  *******************************************************/
@@ -24,21 +32,19 @@ class Snake {
 		this.color = color; // The unique color for the snake.
 		this.body = []; // Array of segments (each with {x, y}).
 		this.direction = { x: 0, y: 0 }; // Current movement direction.
+		this.userControlled = false; // By default, snakes are AI controlled.
 	}
 }
 
 /*******************************************************
  * HELPER FUNCTIONS
  *******************************************************/
-
 // Returns true if the given cell (x, y) is occupied by any snake segment.
 // The optional ignoreTailSnake parameter lets us ignore the snake’s tail
 // cell if that snake is about to move (which frees up that cell).
 function isCellOccupied(x, y, ignoreTailSnake = null) {
 	for (let snake of snakes) {
 		for (let j = 0; j < snake.body.length; j++) {
-			// If we're checking the snake’s own tail (which will be freed),
-			// then ignore that cell.
 			if (
 				ignoreTailSnake &&
 				snake === ignoreTailSnake &&
@@ -80,9 +86,9 @@ function generateFood() {
 /*******************************************************
  * SNAKE AI: DECIDING THE NEXT MOVE
  *******************************************************/
-// This function returns a safe move (as a direction object) for the given snake.
-// A safe move is one where the snake's head remains within bounds and
-// does not move into an occupied cell. If no safe move exists, null is returned.
+// Returns a safe move (a direction object) for the given snake.
+// A safe move keeps the snake's head within bounds and avoids occupied cells.
+// Returns null if no safe move exists.
 function getNextDirection(snake) {
 	// The four possible movement directions.
 	let possibleDirections = [
@@ -92,7 +98,7 @@ function getNextDirection(snake) {
 		{ x: 0, y: -1 },
 	];
 
-	// Prevent the snake from reversing if it has more than one block.
+	// Prevent a reversal if the snake has more than one block.
 	if (snake.body.length > 1) {
 		let currentDir = snake.direction;
 		possibleDirections = possibleDirections.filter(
@@ -103,20 +109,16 @@ function getNextDirection(snake) {
 	const head = snake.body[0];
 	let safeDirections = [];
 
-	// Evaluate each possible direction.
 	for (let dir of possibleDirections) {
 		let newX = head.x + dir.x;
 		let newY = head.y + dir.y;
-		// Skip directions that would go out of bounds.
 		if (newX < 0 || newX >= gridWidth || newY < 0 || newY >= gridHeight)
 			continue;
-		// Use ignoreTailSnake so that the cell freed by the snake’s tail is considered available.
 		if (isCellOccupied(newX, newY, snake)) continue;
 		safeDirections.push(dir);
 	}
 
 	if (safeDirections.length > 0) {
-		// Sort safe moves by how close they get the snake to the food (Manhattan distance).
 		safeDirections.sort((a, b) => {
 			let distA =
 				Math.abs(head.x + a.x - food.x) + Math.abs(head.y + a.y - food.y);
@@ -126,7 +128,6 @@ function getNextDirection(snake) {
 		});
 		return safeDirections[0];
 	} else {
-		// No safe moves available.
 		return null;
 	}
 }
@@ -135,9 +136,13 @@ function getNextDirection(snake) {
  * INITIALIZING THE SNAKES
  *******************************************************/
 // Creates the specified number of snakes with unique colors.
+// If the "Enable User Control" checkbox is checked, the designated snake
+// (by default the first snake) is marked as user-controlled.
 function createSnakes(count) {
 	snakes = [];
-	// Preset array of colors.
+	// Reset the blocked counter whenever we start a new game.
+	userBlockedCounter = 0;
+
 	const presetColors = [
 		"red",
 		"blue",
@@ -158,18 +163,26 @@ function createSnakes(count) {
 		"violet",
 	];
 
+	// Read the current state of the user control checkbox.
+	const enableUserControl = document.getElementById("userControlCheck").checked;
+
 	for (let i = 0; i < count; i++) {
 		let color;
 		if (i < presetColors.length) {
 			color = presetColors[i];
 		} else {
-			// Generate a random hex color and ensure it is unique.
 			do {
 				color = "#" + Math.floor(Math.random() * 16777215).toString(16);
 			} while (snakes.some((s) => s.color === color));
 		}
 
 		const snake = new Snake(i, color);
+
+		// Designate the first snake as user-controlled if enabled.
+		if (i === 0 && enableUserControl) {
+			snake.userControlled = true;
+			window.userSnakeId = snake.id;
+		}
 
 		// Choose a random unoccupied starting cell.
 		let valid = false;
@@ -205,20 +218,16 @@ function createSnakes(count) {
 }
 
 /*******************************************************
- * DRAWING THE SNAKE EYES ON THE HEAD
+ * DRAWING FUNCTIONS
  *******************************************************/
-// Draws two white eyes on the head (first block) of the snake,
-// positioned according to its current direction. We use ctx.save()
-// and ctx.restore() so that the fillStyle used for the snake's body
-// (its original color) remains unchanged.
+// Draws two white eyes on the snake's head based on its direction.
 function drawEyes(snake) {
 	const head = snake.body[0];
 	const x = head.x * cellSize;
 	const y = head.y * cellSize;
-	const eyeRadius = cellSize * 0.1; // About 10% of the cell size.
+	const eyeRadius = cellSize * 0.1; // About 10% of the cell size
 
 	let eye1, eye2;
-	// Position the eyes based on the direction.
 	if (snake.direction.x === 1) {
 		// Moving right
 		eye1 = { x: x + cellSize * 0.7, y: y + cellSize * 0.3 };
@@ -252,41 +261,186 @@ function drawEyes(snake) {
 	ctx.restore();
 }
 
+// Draws a half white circle (mouth) on the head of the user-controlled snake.
+function drawMouth(snake) {
+	const head = snake.body[0];
+	const headX = head.x * cellSize;
+	const headY = head.y * cellSize;
+	let mouthCenter,
+		mouthRadius = cellSize * 0.3;
+
+	ctx.save();
+	ctx.fillStyle = "white";
+
+	if (snake.direction.x === 1) {
+		// Moving right: mouth on left side.
+		mouthCenter = { x: headX + cellSize * 0.3, y: headY + cellSize * 0.5 };
+		ctx.beginPath();
+		ctx.arc(
+			mouthCenter.x,
+			mouthCenter.y,
+			mouthRadius,
+			Math.PI / 2,
+			(3 * Math.PI) / 2,
+			true
+		);
+		ctx.fill();
+	} else if (snake.direction.x === -1) {
+		// Moving left: mouth on right side.
+		mouthCenter = { x: headX + cellSize * 0.7, y: headY + cellSize * 0.5 };
+		ctx.beginPath();
+		ctx.arc(
+			mouthCenter.x,
+			mouthCenter.y,
+			mouthRadius,
+			-Math.PI / 2,
+			Math.PI / 2,
+			true
+		);
+		ctx.fill();
+	} else if (snake.direction.y === 1) {
+		// Moving down: mouth on top.
+		mouthCenter = { x: headX + cellSize * 0.5, y: headY + cellSize * 0.3 };
+		ctx.beginPath();
+		ctx.arc(mouthCenter.x, mouthCenter.y, mouthRadius, 0, Math.PI, true);
+		ctx.fill();
+	} else if (snake.direction.y === -1) {
+		// Moving up: mouth on bottom.
+		mouthCenter = { x: headX + cellSize * 0.5, y: headY + cellSize * 0.7 };
+		ctx.beginPath();
+		ctx.arc(
+			mouthCenter.x,
+			mouthCenter.y,
+			mouthRadius,
+			Math.PI,
+			2 * Math.PI,
+			true
+		);
+		ctx.fill();
+	} else {
+		// Default: assume moving right.
+		mouthCenter = { x: headX + cellSize * 0.3, y: headY + cellSize * 0.5 };
+		ctx.beginPath();
+		ctx.arc(
+			mouthCenter.x,
+			mouthCenter.y,
+			mouthRadius,
+			Math.PI / 2,
+			(3 * Math.PI) / 2,
+			true
+		);
+		ctx.fill();
+	}
+	ctx.restore();
+}
+
 /*******************************************************
  * THE GAME LOOP: UPDATING THE GAME STATE
  *******************************************************/
-// In each iteration, every snake tries to move using a safe move.
-// If a snake has a safe move, it moves (and grows if it eats food).
-// If no snake can move in an iteration, the game is over.
+// In each iteration, every snake attempts to move.
+// For user-controlled snakes, the move is based on the current (user-set) direction;
+// for AI-controlled snakes, a safe move is computed.
 function gameLoop() {
 	let anyMoved = false;
 
 	for (let snake of snakes) {
-		const nextDir = getNextDirection(snake);
-		if (nextDir !== null) {
-			const head = snake.body[0];
-			const newHead = { x: head.x + nextDir.x, y: head.y + nextDir.y };
+		const head = snake.body[0];
+		let newHead;
+		if (snake.userControlled) {
+			// Use the user-updated direction.
+			let intendedDir = snake.direction;
+			newHead = { x: head.x + intendedDir.x, y: head.y + intendedDir.y };
 
-			// If the snake's head reaches the food, grow the snake.
-			if (newHead.x === food.x && newHead.y === food.y) {
-				snake.body.unshift(newHead);
-				generateFood();
+			// Check if the intended move is safe.
+			if (
+				newHead.x < 0 ||
+				newHead.x >= gridWidth ||
+				newHead.y < 0 ||
+				newHead.y >= gridHeight ||
+				isCellOccupied(newHead.x, newHead.y, snake)
+			) {
+				// Do nothing if blocked (user may change direction).
 			} else {
-				// Normal movement: add new head and remove tail.
-				snake.body.unshift(newHead);
-				snake.body.pop();
+				if (newHead.x === food.x && newHead.y === food.y) {
+					snake.body.unshift(newHead);
+					generateFood();
+				} else {
+					snake.body.unshift(newHead);
+					snake.body.pop();
+				}
+				anyMoved = true;
 			}
-			// Update the snake's direction for the next move.
-			snake.direction = nextDir;
-			anyMoved = true;
+		} else {
+			// For AI-controlled snakes, get a safe move.
+			const nextDir = getNextDirection(snake);
+			if (nextDir !== null) {
+				newHead = { x: head.x + nextDir.x, y: head.y + nextDir.y };
+				if (newHead.x === food.x && newHead.y === food.y) {
+					snake.body.unshift(newHead);
+					generateFood();
+				} else {
+					snake.body.unshift(newHead);
+					snake.body.pop();
+				}
+				snake.direction = nextDir;
+				anyMoved = true;
+			}
 		}
-		// If nextDir is null, this snake is blocked and does not move.
 	}
 
-	// End the game if no snake was able to move in this iteration.
-	if (!anyMoved) {
-		clearInterval(gameInterval);
-		setTimeout(() => alert("Game Over!"), 10);
+	// Game over condition:
+	// If user control is enabled, check all four directions from the user-controlled snake's head.
+	// Instead of immediately ending the game when no safe move exists this iteration,
+	// we increment a counter and only end the game if the snake has been blocked for several consecutive iterations.
+	if (document.getElementById("userControlCheck").checked) {
+		let userSnake = snakes.find((s) => s.userControlled);
+		if (userSnake) {
+			const head = userSnake.body[0];
+			const possibleDirections = [
+				{ x: 1, y: 0 },
+				{ x: -1, y: 0 },
+				{ x: 0, y: 1 },
+				{ x: 0, y: -1 },
+			];
+			let safeMoves = [];
+			for (let dir of possibleDirections) {
+				let newX = head.x + dir.x;
+				let newY = head.y + dir.y;
+				if (
+					newX >= 0 &&
+					newX < gridWidth &&
+					newY >= 0 &&
+					newY < gridHeight &&
+					!isCellOccupied(newX, newY, userSnake)
+				) {
+					safeMoves.push(dir);
+				}
+			}
+			if (safeMoves.length === 0) {
+				userBlockedCounter++;
+				if (userBlockedCounter >= USER_BLOCKED_THRESHOLD) {
+					clearInterval(gameInterval);
+					setTimeout(
+						() =>
+							alert(
+								"Game Over! (User-controlled snake is completely surrounded)"
+							),
+						10
+					);
+					return;
+				}
+			} else {
+				// Reset the counter if there is at least one safe move.
+				userBlockedCounter = 0;
+			}
+		}
+	} else {
+		// When user control is disabled, end the game if no snake moved.
+		if (!anyMoved) {
+			clearInterval(gameInterval);
+			setTimeout(() => alert("Game Over!"), 10);
+			return;
+		}
 	}
 	draw();
 }
@@ -296,7 +450,6 @@ function gameLoop() {
  *******************************************************/
 // Clears the canvas and redraws the food and all snakes.
 function draw() {
-	// Clear the canvas.
 	ctx.fillStyle = "#eee";
 	ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -306,7 +459,6 @@ function draw() {
 
 	// Draw each snake.
 	for (let snake of snakes) {
-		// Set fillStyle to the snake's unique color.
 		ctx.fillStyle = snake.color;
 		for (let i = 0; i < snake.body.length; i++) {
 			const segment = snake.body[i];
@@ -316,8 +468,11 @@ function draw() {
 				cellSize,
 				cellSize
 			);
-			// Draw the eyes on the head (first segment).
+			// For the head, add facial features.
 			if (i === 0) {
+				if (snake.userControlled) {
+					drawMouth(snake); // Draw the half circle (mouth) behind the eyes.
+				}
 				drawEyes(snake);
 			}
 		}
@@ -325,10 +480,82 @@ function draw() {
 }
 
 /*******************************************************
+ * KEYBOARD EVENT LISTENER FOR USER CONTROL
+ *******************************************************/
+// Listen for keydown events and update the direction of the user-controlled snake.
+window.addEventListener("keydown", function (e) {
+	const userSnake = snakes.find((s) => s.userControlled);
+	if (!userSnake) return;
+
+	let newDir;
+	switch (e.key) {
+		case "ArrowUp":
+		case "w":
+		case "W":
+			newDir = { x: 0, y: -1 };
+			break;
+		case "ArrowDown":
+		case "s":
+		case "S":
+			newDir = { x: 0, y: 1 };
+			break;
+		case "ArrowLeft":
+		case "a":
+		case "A":
+			newDir = { x: -1, y: 0 };
+			break;
+		case "ArrowRight":
+		case "d":
+		case "D":
+			newDir = { x: 1, y: 0 };
+			break;
+		default:
+			return;
+	}
+	// Prevent a 180° reversal if the snake has more than one block.
+	if (userSnake.body.length > 1) {
+		if (
+			userSnake.direction.x === -newDir.x &&
+			userSnake.direction.y === -newDir.y
+		) {
+			return;
+		}
+	}
+	userSnake.direction = newDir;
+});
+
+/*******************************************************
+ * DYNAMIC USER CONTROL TOGGLE
+ *******************************************************/
+// Listen for changes to the "Enable User Control" checkbox to dynamically
+// assign or remove user control from the designated snake.
+document
+	.getElementById("userControlCheck")
+	.addEventListener("change", function (e) {
+		const enableUserControl = e.target.checked;
+		if (enableUserControl) {
+			// If a snake was previously designated, re-enable user control on it.
+			let designated = snakes.find((s) => s.id === window.userSnakeId);
+			if (designated) {
+				designated.userControlled = true;
+			} else if (snakes.length > 0) {
+				// Otherwise, designate the first snake.
+				snakes[0].userControlled = true;
+				window.userSnakeId = snakes[0].id;
+			}
+		} else {
+			// Disable user control on the designated snake.
+			let designated = snakes.find((s) => s.id === window.userSnakeId);
+			if (designated) {
+				designated.userControlled = false;
+			}
+		}
+	});
+
+/*******************************************************
  * EVENT LISTENER TO START THE GAME
  *******************************************************/
 document.getElementById("startBtn").addEventListener("click", function () {
-	// Read the number of snakes from the input.
 	const count = parseInt(document.getElementById("snakeCount").value) || 1;
 	createSnakes(count);
 
@@ -346,7 +573,7 @@ document.getElementById("startBtn").addEventListener("click", function () {
 	];
 	let chosenFoodColor = foodCandidates.find((color) => !snakeColors.has(color));
 	if (!chosenFoodColor) {
-		chosenFoodColor = "yellow"; // Fallback if all candidate colors are used.
+		chosenFoodColor = "yellow";
 	}
 	foodColor = chosenFoodColor;
 	generateFood();
